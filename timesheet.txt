@@ -7,3 +7,9 @@
 
 2014/11/18
 2 hrs reorganize codes; add buttons
+
+2014/11/21
+4 hrs add default color schemes
+
+2014/11/22
+2 hrs add data and view plots feature
