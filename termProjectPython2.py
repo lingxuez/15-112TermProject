@@ -7,6 +7,7 @@ import copy
 import colorsys
 import os
 import math
+import numpy
 
 from Tkinter import *
 import ttk
@@ -155,6 +156,7 @@ class DefaultColorSchemes(object):
         self.schmWidth, self.schmHeight, self.margin = 19, 19, 15
         self.textMargin, self.maxLen, self.maxPerLine = 5, 4, 9
         self.minClassNum, self.maxClassNum = 3, 11
+        self.lwd, self.hCol = 7, rgbString(178, 178, 178)
         self.colorSchemes = self.getColorSchemes(filePath)
 
     # read in color scheme files, return a 3d list
@@ -180,11 +182,11 @@ class DefaultColorSchemes(object):
 
     # draw one scheme at given location
     def drawSingleScheme(self, x, y, scheme, detail=False, truncate=False,
-                        compress=False):
-        tMargin, maxLen = self.textMargin, self.maxLen
+                        compress=False, highlight=None):
+        tMargin, maxLen, topY, lwd = self.textMargin, self.maxLen, y, 3
         # compress height
         if compress:
-            schmHeight = self.schmHeight*self.minClassNum/float(len(scheme))
+            schmHeight=self.schmHeight*(self.minClassNum+1)/float(len(scheme))
         else: schmHeight = self.schmHeight
         # only show selected 5 colors 
         if truncate and len(scheme)>maxLen:
@@ -197,11 +199,15 @@ class DefaultColorSchemes(object):
                             fill=rgbString(r, g, b), 
                             outline=rgbString(128, 128, 128), width=2)
             # information
-            if detail:
-                self.canvas.create_text( x+self.schmWidth+tMargin, 
+            if detail: self.canvas.create_text( x+self.schmWidth+tMargin, 
                             y+schmHeight/2, anchor=W, text=rgbString(r,g,b), 
                             font=("Arial", 10), fill=rgbString(90,90,90))
             y += schmHeight 
+        # highlight if specified
+        if highlight != None: 
+            self.canvas.create_rectangle(x-lwd/2, topY+schmHeight*highlight-lwd/2, 
+                            x+self.schmWidth, topY+schmHeight*(highlight+1),
+                            outline=rgbString(120,120,120), width=lwd+1)
 
     # given start (x,y), get the leftX and topY position for i-th scheme 
     def getLeftTop(self, x, y, classNum, i):
@@ -214,7 +220,7 @@ class DefaultColorSchemes(object):
     # draw color schemes at given location on canvas
     def drawSchemes(self, x, y, classNum, curSchm):
         schemes = self.colorSchemes[classNum]
-        lwd, hCol = 7, rgbString(178, 178, 178)
+        lwd, hCol = self.lwd, self.hCol
         # highlight current scheme
         (left, top) = self.getLeftTop(x, y, classNum, curSchm)
         self.canvas.create_rectangle( left-lwd/2, top-lwd/2, 
@@ -227,7 +233,7 @@ class DefaultColorSchemes(object):
             (left, top) = self.getLeftTop(x, y, classNum, i)
             self.drawSingleScheme(left, top, scheme, truncate=True)
 
-    # get which color scheme did (newX, newY) falled into
+    # get which color scheme did (newX, newY) fell into
     def getCurrentScheme(self, x, y, newX, newY, classNum):
         schemes = self.colorSchemes[classNum]
         for i in xrange(len(schemes)):
@@ -236,6 +242,16 @@ class DefaultColorSchemes(object):
             bottom = top+self.schmHeight*min(classNum, self.maxLen)
             if (left<=newX and newX<=right and top<=newY and newY<=bottom):
                 return i
+        return None
+
+    # get which color within scheme did (newX, newY) fell into
+    def getWorkingColor(self, (left, top), newX, newY, classNum):
+        right = left+self.schmWidth
+        for i in xrange(classNum):
+            bottom = top+self.schmHeight
+            if (left<=newX and newX<=right and top<=newY and newY<=bottom):
+                return i
+            top += self.schmHeight
         return None
 
 # class to generate and draw color wheel
@@ -254,6 +270,7 @@ class ColorWheel(object):
         r, g, b = map(lambda x: x/255., [r, g, b]) # Convert to [0, 1]
         h, l, s = colorsys.rgb_to_hls(r, g, b)     # RGB -> HLS
         h = [(h+d) % 1 for d in (-d, d)]           # Rotation by d
+        l = 0.8*l
         adjacent = []
         for hi in h:
             r, g, b = colorsys.hls_to_rgb(hi, l, s)
@@ -265,7 +282,7 @@ class ColorWheel(object):
     def drawColorWheel(self):
         cx, cy, r = self.cx, self.cy, self.r
         startColor = self.startColor
-        degStep, startDeg, fullDeg = 36, 90, 360
+        degStep, startDeg, fullDeg = 2, 0, 360
         # color wheel
         for i in xrange(int(fullDeg/degStep)+1):
             currentColor = self.adjacent_colors(*startColor, deg=i*degStep)[1]
@@ -293,8 +310,9 @@ class ColorYourData(EventBasedAnimationClass):
         self.bMargin, self.cMargin, self.margin = 30, 5, 5
         # initialization
         self.initZoneLoc()
-        self.initFavorites()
         self.initDefaultSchemes()
+        self.initYourSchemes()
+        self.initFavorites()
         self.initData()
         self.initWidgets()        
         self.initView()
@@ -310,7 +328,7 @@ class ColorYourData(EventBasedAnimationClass):
         self.zoneLoc += [(x,y,w,h)]
         # zone 1: view plots
         (x, y) = (self.zoneLoc[0][0], self.zoneLoc[0][1]+self.zoneLoc[0][3])
-        (w, h) = (self.zoneLoc[0][2], self.height*2/3)
+        (w, h) = (self.zoneLoc[0][2], self.height*3/5)
         self.zoneLoc += [(x,y,w,h)]
         # zone 2: favorites
         (x, y) = (self.zoneLoc[0][0], self.zoneLoc[1][1]+self.zoneLoc[1][3])
@@ -332,6 +350,9 @@ class ColorYourData(EventBasedAnimationClass):
     # initialize favorite schemes
     def initFavorites(self):
         self.favSchm = []
+        self.favMargin = self.defSchm.margin/2
+        self.favDelCol = rgbString(168,168,168)
+        self.favDelWidth = self.defSchm.schmWidth*2/3
         
     # initialize all buttons, combo boxes
     def initWidgets(self):
@@ -353,6 +374,23 @@ class ColorYourData(EventBasedAnimationClass):
         # location
         (x, y, w, h) = self.zoneLoc[4]
         self.defSchmLoc = (x+self.margin*3, y+self.subtitleSize*2.5)
+        # working scheme
+        self.workZone = 4
+
+    # intialize user-select color schemes: all white (0,0,0)
+    def initYourSchemes(self):
+    	self.yourSchm, fullRGB = [], 255
+    	for i in xrange(self.classNum):
+    		self.yourSchm += [(fullRGB, fullRGB, fullRGB)]
+    	# wheel location
+    	(x, y, w, h) = self.zoneLoc[5]
+        self.cx, self.cy, self.r = x+w/3, y+h/2, w/4
+        self.colorWheel = ColorWheel(canvas=self.canvas, cx=self.cx, 
+        						cy=self.cy, r=self.r)
+        # color schm location; current active col
+        self.yourColLoc = (x+w*2/3, 
+                        self.cy-self.defSchm.schmHeight*self.classNum/2)
+        self.curYourCol = 0
 
     # intialize data
     def initData(self):
@@ -379,8 +417,8 @@ class ColorYourData(EventBasedAnimationClass):
             (text, viewType) = viewTypes[i]
             self.radio = Radiobutton(self.radioFrame,  text=text,
                         variable = self.radioValue, value = viewType, 
-                        command = self.newRadiobutton, width=15, 
-                        font=("Arial",self.subtitleSize), 
+                        command = self.newRadiobutton, width=13, 
+                        font=("Arial",self.subtitleSize),
                         borderwidth=1)
             self.radio.grid(row=0, column=i)
 
@@ -421,6 +459,7 @@ class ColorYourData(EventBasedAnimationClass):
         self.classNum = int(self.boxValue.get())
         self.curDefSchm = 0
         self.curSchm=self.defSchm.colorSchemes[self.classNum][self.curDefSchm]
+        self.initYourSchemes()
         self.redrawAll()
 
     # build two buttons for saving as favorites
@@ -429,6 +468,10 @@ class ColorYourData(EventBasedAnimationClass):
                         command=self.onSaveButton,font=("Arial",self.textSize))
         (x, y, w, h) = self.zoneLoc[4]
         self.saveButton1.place(x=x+w-self.margin, y=y+h, anchor=SE)
+        self.saveButton2 = Button(self.canvas, text="Save to favorites",
+                        command=self.onSaveButton,font=("Arial",self.textSize))
+        (x, y, w, h) = self.zoneLoc[5]
+        self.saveButton2.place(x=x+w-self.margin, y=y+h, anchor=SE)
 
     # reacto to button click, save color schemes
     def onSaveButton(self):
@@ -437,13 +480,81 @@ class ColorYourData(EventBasedAnimationClass):
 
     # react to mouse pressed
     def onMousePressed(self, event):
-        # selected a new default scheme?
+        self.clickZone = self.inWhichZone(event)
+        self.onMousePressedZone(event)
+        self.redrawAll()
+
+    # react to mouse pressed inside each zone
+    def onMousePressedZone(self, event):
+        if self.clickZone == 2:
+            self.delFavSchm(event.x, event.y)
+        elif self.clickZone == 4:
+            self.newDefSchm(event.x, event.y)
+            self.workZone = 4
+        elif self.clickZone == 5:
+        	self.workZone = 5 
+        	self.curSchm = self.yourSchm
+        	self.newYourCol(event.x, event.y)
+
+    # check which zone user clicked in
+    def inWhichZone(self, event):
+        for i in xrange(6):
+            (x, y, w, h) = self.zoneLoc[i]
+            if (x<=event.x and event.x<=x+w and y<=event.y and event.y<=y+h):
+                return i
+        return None      
+
+    # check whether user selected a new default scheme
+    def newDefSchm(self, newX, newY):
         (x, y) = self.defSchmLoc
-        newSchm = self.defSchm.getCurrentScheme(x, y, event.x, event.y,
-                                                self.classNum)
+        newSchm = self.defSchm.getCurrentScheme(x, y, newX,newY, self.classNum)
         if newSchm != None: 
             self.curDefSchm = newSchm
         self.curSchm=self.defSchm.colorSchemes[self.classNum][self.curDefSchm]
+
+    # calculate the top left location to draw i-th favorate schemes
+    def favSchmLoc(self, i):
+        (x, y, w, h) = self.zoneLoc[2]
+        margin = self.favMargin 
+        schmWidth, schmHeight = self.defSchm.schmWidth, self.defSchm.schmHeight
+        # color scheme
+        leftX = x+margin+(margin+schmWidth)*i
+        topY = y+self.subtitleSize*2+self.margin
+        # delete button
+        delLeftX = leftX+(schmWidth-self.favDelWidth)/2
+        delTopY = topY+schmHeight*(self.minClass+1)+margin
+        return (leftX, topY, delLeftX, delTopY)
+
+    # check whether user deleted a favorite scheme
+    def delFavSchm(self, newX, newY):
+        for i in xrange(len(self.favSchm)):
+            (leftX, topY, delLeftX, delTopY) = self.favSchmLoc(i)
+            if (delLeftX<=newX and newX<=(delLeftX+self.favDelWidth) 
+                and delTopY<=newY and newY<=(delTopY+self.favDelWidth)):
+                self.favSchm.pop(i)
+                return
+
+    # check whether user select a new color design
+    def newYourCol(self, newX, newY):
+        # chose a color inside wheel?
+        if (newX - self.cx)**2 + (newY - self.cy)**2 <= self.r**2:
+                self.yourSchm[self.curYourCol] = self.getColorFromWheel(newX, newY)
+        # chose to work on another color?
+        else:
+            select = self.defSchm.getWorkingColor(self.yourColLoc, newX, newY, self.classNum)
+            if select != None: self.curYourCol = select
+
+	# get the color on given location from color wheel
+    def getColorFromWheel(self, newX, newY):
+		a, c = self.cy-newY, ((newX-self.cx)**2 + (newY-self.cy)**2)**0.5
+		if newX>self.cx:
+			radian = math.asin(a/c)
+		else:
+			radian = math.pi-math.asin(a/c)
+		deg = radian*360/(math.pi*2)
+		(r, g, b) = (255, 0, 0)
+		(r2, g2, b2) = self.colorWheel.adjacent_colors(r, g, b, deg=deg)[1]
+		return (r2, g2, b2)
 
     # draw the separation lines between sections
     def drawSectionLines(self):
@@ -498,13 +609,19 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
             self.canvas.create_text(x+self.margin, y+self.subtitleSize, 
                                 text=subTitles[zone], anchor=W, 
                                 fill=self.subCol, font=self.subFont)
+        # highlight current working zone
+        (x, y, w, h) = self.zoneLoc[self.workZone]
+        self.canvas.create_text(x+self.margin, y+self.subtitleSize, 
+                                text=subTitles[self.workZone], anchor=W, 
+                                fill="red", font=self.subFont)
+
 
     # draw zone 1: view
     def drawZone1(self):
         (x, y, w, h) = self.zoneLoc[1]
         # plot 
         self.data.plotData(self.viewType, x+self.margin*2+self.subtitleSize*2,
-                                y+self.margin*2+self.subtitleSize*4, 
+                                y+self.margin*2+self.subtitleSize*3, 
                                 w*4/6, h*3/4, 
                                 self.classNum, self.curSchm)
         # legend of current color scheme                
@@ -514,12 +631,23 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
 
     # draw zone 2: favorites
     def drawZone2(self):
-        (x, y, w, h) = self.zoneLoc[2]
-        margin, schmWidth = self.defSchm.margin/2, self.defSchm.schmWidth
         for i in xrange(len(self.favSchm)):
-            self.defSchm.drawSingleScheme(x+margin+(margin+schmWidth)*i,
-                                y+self.subtitleSize*2+self.margin, 
-                                self.favSchm[i], compress=True)
+            (leftX, topY, delLeftX, delTopY) = self.favSchmLoc(i)
+            # compressed color scheme
+            self.defSchm.drawSingleScheme(leftX, topY, self.favSchm[i],
+                                            compress=True)
+            # delete button
+            self.canvas.create_rectangle(delLeftX, delTopY, 
+                                delLeftX+self.favDelWidth, 
+                                delTopY+self.favDelWidth,
+                                outline=self.favDelCol)
+            self.canvas.create_line(delLeftX, delTopY, 
+                                delLeftX+self.favDelWidth,
+                                delTopY+self.favDelWidth, 
+                                fill= self.favDelCol)
+            self.canvas.create_line(delLeftX+self.favDelWidth, delTopY,
+                                delLeftX, delTopY+self.favDelWidth,
+                                fill= self.favDelCol)
 
     # draw zone 4: default color schemes
     def drawZone4(self):
@@ -529,9 +657,13 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
     # draw zone 5: design your color
     def drawZone5(self):
         (x, y, w, h) = self.zoneLoc[5]
-        self.colorWheel = ColorWheel(canvas=self.canvas, 
-                                cx=x+w/3, cy=y+h/3, r=h/4)
+        # color wheel
+        cx, cy, r = self.cx, self.cy, self.r
         self.colorWheel.drawColorWheel()
+        # color scheme
+        (left, top) = self.yourColLoc
+        self.defSchm.drawSingleScheme(left, top,
+        						self.yourSchm, highlight=self.curYourCol)
 
     # redraw the canvas
     def redrawAll(self):

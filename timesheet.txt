@@ -13,3 +13,9 @@
 
 2014/11/22
 2 hrs add data and view plots feature
+
+2014/11/23
+1 hr add favorite zone
+
+2014/11/25
+4 hrs let users select colors from color wheel
