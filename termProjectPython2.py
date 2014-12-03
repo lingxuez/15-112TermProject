@@ -2,6 +2,7 @@
 # name: Lingxue Zhu
 # andrewId: lzhu1
 # section: L
+# Cited 3 functions from lecture notes and 1 from stackoverflow.com
 
 import copy
 import colorsys
@@ -11,6 +12,7 @@ import numpy
 
 from Tkinter import *
 import ttk
+import Tkconstants, tkFileDialog
 from eventBasedAnimationClass2 import EventBasedAnimationClass
 
 # turn rgb into hex strings; from lecture notes
@@ -22,6 +24,12 @@ def readFile(filename, mode="rt"):
     # rt = "read text"
     with open(filename, mode) as fin:
         return fin.read()
+
+# write files: from lecture notes
+def writeFile(filename, contents, mode="wt"):
+    # wt = "write text"
+    with open(filename, mode) as fout:
+        fout.write(contents)
 
 # a class to read-in and handle data
 class Data(object):
@@ -362,6 +370,8 @@ class ColorYourData(EventBasedAnimationClass):
         self.root.bind("<<ComboboxSelected>>", 
                         lambda event: self.onComboboxSelection(event))
         self.saveButton()
+        self.exportButton()
+        self.importButton()
 
     # initialize default color schemes
     def initDefaultSchemes(self):
@@ -473,9 +483,48 @@ class ColorYourData(EventBasedAnimationClass):
         (x, y, w, h) = self.zoneLoc[5]
         self.saveButton2.place(x=x+w-self.margin, y=y+h, anchor=SE)
 
-    # reacto to button click, save color schemes
+    # react to button click, save color schemes
     def onSaveButton(self):
         self.favSchm += [self.curSchm]
+        self.redrawAll()
+
+    # build export buttons for saving favorites in zone 2
+    def exportButton(self):
+        self.exportButton = Button(self.canvas, text='Export favorites',
+                                command=self.exportFav)
+        (x, y, w, h) = self.zoneLoc[2]
+        self.exportButton.place(x=x+w-self.margin, y=y+self.margin, anchor=NE)
+
+    # save current favorite schemes to given file
+    def exportFav(self):
+        # get filename
+        initialDir = "/Users/lingxue/Documents/Courses/2014Fall/15-112/termProject"
+        filename = tkFileDialog.asksaveasfilename(parent=self.canvas, 
+                            defaultextension=".txt", initialdir= initialDir,
+                            initialfile="myFavoriteSchemes.txt")
+        # write to file
+        contents = ""
+        for scheme in self.favSchm:
+            for (r,g,b) in scheme:
+                contents += rgbString(r,g,b)+"\t"
+            contents += "\n"
+        writeFile(filename, contents)
+
+    # build import buttons in zone 1
+    def importButton(self):
+        self.importButton = Button(self.canvas, text='Import data',
+                                command=self.importData)
+        (x, y, w, h) = self.zoneLoc[1]
+        self.importButton.place(x=x+w-self.margin, y=y+self.margin, anchor=NE)
+
+    # import data from given file
+    def importData(self):
+        # get filename
+        initialDir = "/Users/lingxue/Documents/Courses/2014Fall/15-112/termProject"
+        filename = tkFileDialog.askopenfilename(parent=self.canvas, 
+                                        initialdir= initialDir)
+        self.dataFile = filename
+        self.initData()
         self.redrawAll()
 
     # react to mouse pressed
