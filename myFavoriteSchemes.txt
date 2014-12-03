@@ -1,3 +1,4 @@
-#ef8a62	#f7f7f7	#67a9cf	
-#b35806	#e08214	#fdb863	#fee0b6	#d8daeb	#b2abd2	#8073ac	#542788	
-#b3e2cd	#fdcdac	#cbd5e8	#f4cae4	#e6f5c9	
+#1b9e77	#d95f02	#7570b3	#e7298a	#66a61e	#e6ab02	
+#d73027	#fc8d59	#fee08b	#d9ef8b	#91cf60	#1a9850	
+#e66101	#fdb863	#b2abd2	#5e3c99	
+#ccc800	#0003cc	#00cc4b	#cc8600	

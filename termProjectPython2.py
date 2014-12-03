@@ -8,7 +8,8 @@ import copy
 import colorsys
 import os
 import math
-import numpy
+import numpy as np
+import cv2
 
 from Tkinter import *
 import ttk
@@ -36,27 +37,51 @@ class Data(object):
     # constructor
     def __init__(self, canvas, filePath):
         self.canvas = canvas
-        self.getData(filePath)
-        self.getFreq()
         self.lineCol = rgbString(98,98,98)
         self.fontSize = 15
+        self.filePath = filePath
+        self.getData()
 
     # read in data from a file, save as a 1d list with tuples (x,y,class)
-    def getData(self, path):
-        s = readFile(path)
+    def getData(self, isAutoClust=False, clusterNum = 2):
+        s = readFile(self.filePath)
         sLine = s.splitlines()
         data = []
-        # ignore first line, which is name
+        # get data from file; ignore first line, which is name
         for line in sLine[1:]:
             (x, y, myClass) = tuple( float(a) for a in line.split("\t"))
             myClass = int(myClass)
             data += [(x, y, myClass)]
-        self.data = data
+        self.originalData = data
+        # k-means if needed
+        if isAutoClust:
+            self.data = self.kMeans(clusterNum)
+        else: 
+            self.data = self.originalData
+        # get frequency
+        self.getFreq()
 
+    # k-means clustering; modified from http://docs.opencv.org/...
+    # ...trunk/doc/py_tutorials/py_ml/py_kmeans/py_kmeans_opencv/...
+    # ...py_kmeans_opencv.html
+    def kMeans(self, clusterNum):
+        # turn to numpy array
+        npData = np.array(self.originalData)
+        Z = np.float32(npData[npData[:,2]<=clusterNum,:])
+        Z = Z[:, [0,1]]
+        # define criteria and apply kmeans()
+        maxIter, eps, attempts = 10, 1.0, 10
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                            maxIter, eps)
+        ret,label,center=cv2.kmeans(Z,clusterNum,criteria,attempts,
+                            cv2.KMEANS_PP_CENTERS)
+        return np.hstack((Z, label+1)).tolist()
+        
     # get frequency of each class
     def getFreq(self):
         freq = [0]
         for (x, y, myClass) in self.data:
+            myClass = int(myClass)
             # new class
             if myClass> len(freq):
                 freq += [0]*(myClass - len(freq))
@@ -115,7 +140,7 @@ class Data(object):
     def drawPieChart(self, x, y, w, h, classNum, colSchm):
         margin, fontSize = w/20, self.fontSize
         cx, cy = x+margin+(w-margin*2)/2.0, y+margin+(h-margin*2)/2.0
-        radius = (w - margin*2)/2.0
+        radius = (w - margin*2)/2.5
         totalFreq, totalDeg = sum(self.freq[0:classNum]), 360
         # draw chart
         for i in xrange(classNum):
@@ -145,6 +170,7 @@ class Data(object):
         self.canvas.create_text(x-fontSize/2, y+h/2, anchor=E, text="Y",
                             fill=lineCol, font=("Arial",fontSize,"bold"))
         for (myX, myY, myClass) in self.data:
+            myClass = int(myClass)
             if myClass <= classNum:
                 (r,g,b) = colSchm[myClass-1]
                 # calculate screen location
@@ -213,7 +239,8 @@ class DefaultColorSchemes(object):
             y += schmHeight 
         # highlight if specified
         if highlight != None: 
-            self.canvas.create_rectangle(x-lwd/2, topY+schmHeight*highlight-lwd/2, 
+            self.canvas.create_rectangle(x-lwd/2, 
+                            topY+schmHeight*highlight-lwd/2,
                             x+self.schmWidth, topY+schmHeight*(highlight+1),
                             outline=rgbString(120,120,120), width=lwd+1)
 
@@ -318,11 +345,11 @@ class ColorYourData(EventBasedAnimationClass):
         self.bMargin, self.cMargin, self.margin = 30, 5, 5
         # initialization
         self.initZoneLoc()
+        self.initData()
         self.initDefaultSchemes()
         self.initYourSchemes()
         self.initFavorites()
-        self.initData()
-        self.initWidgets()        
+        self.initWidgets()       
         self.initView()
         self.timerDelay = None
 
@@ -358,7 +385,7 @@ class ColorYourData(EventBasedAnimationClass):
     # initialize favorite schemes
     def initFavorites(self):
         self.favSchm = []
-        self.favMargin = self.defSchm.margin/2
+        self.favMargin = self.defSchm.margin*2/3
         self.favDelCol = rgbString(168,168,168)
         self.favDelWidth = self.defSchm.schmWidth*2/3
         
@@ -372,11 +399,12 @@ class ColorYourData(EventBasedAnimationClass):
         self.saveButton()
         self.exportButton()
         self.importButton()
+        self.clearButton()
 
     # initialize default color schemes
     def initDefaultSchemes(self):
-        self.classNum, self.minClass, self.maxClass = 3, 3, 10 
-        self.isCorBlind = False
+        self.classNum, self.minClass = 3, 3
+        self.maxClass = min(10, self.data.totalClass)
         path = "ColorBrewerSchemes.csv"
         self.defSchm = DefaultColorSchemes(self.canvas, path)
         self.curDefSchm = 0
@@ -405,6 +433,7 @@ class ColorYourData(EventBasedAnimationClass):
     # intialize data
     def initData(self):
         self.data = Data(self.canvas, self.dataFile)
+        self.isAutoClust = False
 
     # initialize the view system
     def initView(self):
@@ -437,20 +466,22 @@ class ColorYourData(EventBasedAnimationClass):
         self.viewType = self.radioValue.get()
         self.redrawAll()
 
-    # build check button for zone 4
+    # build check button for zone 1
     def checkbutton(self):
         self.checkValue = IntVar()
-        self.checkValue.set("unsafe") # set initial state
-        self.check = Checkbutton(self.root, text="colorblind safe",
+        self.checkValue.set(0) # set initial state
+        self.check = Checkbutton(self.root, text="Auto-cluster",
                         variable = self.checkValue, 
                         command = self.newCheckbutton, 
                         font=("Arial", self.textSize))
-        (x, y, w, h) = self.zoneLoc[4]
-        self.check.place(x=x+self.margin, y=y+h, anchor=SW)
+        (x, y, w, h) = self.zoneLoc[1]
+        self.check.place(x=x+w-self.margin, 
+                        y=y+self.margin+self.subtitleSize*2, anchor=NE)
 
     # react to check button
     def newCheckbutton(self):
-        self.isCorBlind = bool(self.checkValue.get())
+        self.isAutoClust = bool(self.checkValue.get())
+        self.data.getData(self.isAutoClust, self.classNum)
         self.redrawAll()
 
     # build a combo box for zone 3
@@ -470,6 +501,9 @@ class ColorYourData(EventBasedAnimationClass):
         self.curDefSchm = 0
         self.curSchm=self.defSchm.colorSchemes[self.classNum][self.curDefSchm]
         self.initYourSchemes()
+        self.initData()
+        self.checkValue.set(0)
+        self.workZone = 4
         self.redrawAll()
 
     # build two buttons for saving as favorites
@@ -485,23 +519,26 @@ class ColorYourData(EventBasedAnimationClass):
 
     # react to button click, save color schemes
     def onSaveButton(self):
-        self.favSchm += [self.curSchm]
-        self.redrawAll()
+        maxFavSchm = 17
+        if len(self.favSchm) < maxFavSchm and self.curSchm not in self.favSchm:
+            self.favSchm += [self.curSchm]
+            self.redrawAll()
 
     # build export buttons for saving favorites in zone 2
     def exportButton(self):
-        self.exportButton = Button(self.canvas, text='Export favorites',
-                                command=self.exportFav)
+        self.exportFavButton = Button(self.canvas, text='Export favorites',
+                        command=self.exportFav,font=("Arial",self.textSize))
         (x, y, w, h) = self.zoneLoc[2]
-        self.exportButton.place(x=x+w-self.margin, y=y+self.margin, anchor=NE)
+        self.exportFavButton.place(x=x+w-self.margin, y=y+self.margin/2, 
+                        anchor=NE)
 
     # save current favorite schemes to given file
     def exportFav(self):
         # get filename
-        initialDir = "/Users/lingxue/Documents/Courses/2014Fall/15-112/termProject"
+        initialDir = "~/Documents/Courses/2014Fall/15-112/termProject"
         filename = tkFileDialog.asksaveasfilename(parent=self.canvas, 
-                            defaultextension=".txt", initialdir= initialDir,
-                            initialfile="myFavoriteSchemes.txt")
+                        defaultextension=".txt", initialdir= initialDir,
+                        initialfile="myFavoriteSchemes.txt")
         # write to file
         contents = ""
         for scheme in self.favSchm:
@@ -510,21 +547,42 @@ class ColorYourData(EventBasedAnimationClass):
             contents += "\n"
         writeFile(filename, contents)
 
+    # build button to clear all favorites
+    def clearButton(self):
+        self.clearButton = Button(self.canvas, text='Clear favorites',
+                        command=self.clearFav,font=("Arial",self.textSize))
+        (x, y, w, h) = self.zoneLoc[2]
+        rMargin = 120
+        self.clearButton.place(x=x+w-rMargin, y=y+self.margin/2, 
+                        anchor=NE)
+
+    # clear all current favorites
+    def clearFav(self):
+        self.favSchm = []
+        self.redrawAll()
+
     # build import buttons in zone 1
     def importButton(self):
         self.importButton = Button(self.canvas, text='Import data',
-                                command=self.importData)
+                        command=self.importData, font=("Arial",self.textSize))
         (x, y, w, h) = self.zoneLoc[1]
-        self.importButton.place(x=x+w-self.margin, y=y+self.margin, anchor=NE)
+        self.importButton.place(x=x+w-self.margin,y=y+self.margin/2, anchor=NE)
 
     # import data from given file
     def importData(self):
         # get filename
-        initialDir = "/Users/lingxue/Documents/Courses/2014Fall/15-112/termProject"
+        initialDir = "~/Documents/Courses/2014Fall/15-112/termProject"
         filename = tkFileDialog.askopenfilename(parent=self.canvas, 
                                         initialdir= initialDir)
         self.dataFile = filename
         self.initData()
+        self.initDefaultSchemes()
+        self.initYourSchemes()
+        self.initFavorites()      
+        self.initView()
+        self.combobox()
+        self.checkValue.set(0)
+        self.radioValue.set("barPlot") 
         self.redrawAll()
 
     # react to mouse pressed
@@ -587,10 +645,11 @@ class ColorYourData(EventBasedAnimationClass):
     def newYourCol(self, newX, newY):
         # chose a color inside wheel?
         if (newX - self.cx)**2 + (newY - self.cy)**2 <= self.r**2:
-                self.yourSchm[self.curYourCol] = self.getColorFromWheel(newX, newY)
+            self.yourSchm[self.curYourCol] = self.getColorFromWheel(newX, newY)
         # chose to work on another color?
         else:
-            select = self.defSchm.getWorkingColor(self.yourColLoc, newX, newY, self.classNum)
+            select = self.defSchm.getWorkingColor(self.yourColLoc, newX, newY, 
+                                                    self.classNum)
             if select != None: self.curYourCol = select
 
 	# get the color on given location from color wheel
@@ -670,7 +729,7 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
         (x, y, w, h) = self.zoneLoc[1]
         # plot 
         self.data.plotData(self.viewType, x+self.margin*2+self.subtitleSize*2,
-                                y+self.margin*2+self.subtitleSize*3, 
+                                y+self.margin+self.subtitleSize*3, 
                                 w*4/6, h*3/4, 
                                 self.classNum, self.curSchm)
         # legend of current color scheme                
@@ -725,7 +784,7 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
         self.drawZone4()
         self.drawZone5()
 
-ColorYourData(width=900, height=650).run()
+ColorYourData(width=880, height=610).run()
 
 
 
