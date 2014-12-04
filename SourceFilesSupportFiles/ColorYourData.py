@@ -1,20 +1,50 @@
-# termProjectPython2.py
-# name: Lingxue Zhu
-# andrewId: lzhu1
-# section: L
-# Cited 3 functions from lecture notes and 1 from stackoverflow.com
+########################
+### Color Your Data
+########################
+# 
+# 15-112 Term Project
+# First Name: Lingxue
+# Last Name: Zhu
+# Andrew id: lzhu1 
+# Section: L
+#
+########################
+#
+# This is an app to help users choose different colors to display their data. 
+# It can also help to cluster data into different classes.
+#
+########################
+#
+# Install and Run: 
+#     run "termProject.py" in Python2. 
+#
+# Requires the following modules:
+#     - numpy
+#     - openCV
+#
+# Requires the following files to be in the same folder:
+#     - eventBasedAnimationClass2.py
+#     - defaultData.txt
+#     - ColorBrewerSchemes
+#
+########################
+# 
+# Cited 3 functions from lecture notes, 1 from stackoverflow.com,
+# and 1 from docs.opencv.org
+# 
+########################
 
+from Tkinter import *
+from eventBasedAnimationClass2 import EventBasedAnimationClass
 import copy
 import colorsys
 import os
 import math
 import numpy as np
 import cv2
-
-from Tkinter import *
 import ttk
 import Tkconstants, tkFileDialog
-from eventBasedAnimationClass2 import EventBasedAnimationClass
+import tkMessageBox
 
 # turn rgb into hex strings; from lecture notes
 def rgbString( red, green, blue ):
@@ -32,18 +62,19 @@ def writeFile(filename, contents, mode="wt"):
     with open(filename, mode) as fout:
         fout.write(contents)
 
-# a class to read-in and handle data
+# a class to read-in, handle and plot data
 class Data(object):
     # constructor
-    def __init__(self, canvas, filePath):
+    def __init__(self, canvas, filePath, clusterNum):
         self.canvas = canvas
         self.lineCol = rgbString(98,98,98)
         self.fontSize = 15
+        self.maxClassNum = 10
         self.filePath = filePath
-        self.getData()
+        self.getData(clusterNum=clusterNum)
 
     # read in data from a file, save as a 1d list with tuples (x,y,class)
-    def getData(self, isAutoClust=False, clusterNum = 2):
+    def getData(self, clusterNum, isAutoClust=False):
         s = readFile(self.filePath)
         sLine = s.splitlines()
         data = []
@@ -57,19 +88,21 @@ class Data(object):
         if isAutoClust:
             self.data = self.kMeans(clusterNum)
         else: 
-            self.data = self.originalData
+            npData = np.array(self.originalData)
+            Z = np.float32(npData[npData[:,2]<=clusterNum,:])
+            self.data = Z.tolist()
         # get frequency
         self.getFreq()
 
     # k-means clustering; modified from http://docs.opencv.org/...
-    # ...trunk/doc/py_tutorials/py_ml/py_kmeans/py_kmeans_opencv/...
-    # ...py_kmeans_opencv.html
+    #   ...trunk/doc/py_tutorials/py_ml/py_kmeans/py_kmeans_opencv/...
+    #   ...py_kmeans_opencv.html
     def kMeans(self, clusterNum):
         # turn to numpy array
         npData = np.array(self.originalData)
         Z = np.float32(npData[npData[:,2]<=clusterNum,:])
         Z = Z[:, [0,1]]
-        # define criteria and apply kmeans()
+        # define criteria and apply kmeans
         maxIter, eps, attempts = 10, 1.0, 10
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
                             maxIter, eps)
@@ -80,13 +113,15 @@ class Data(object):
     # get frequency of each class
     def getFreq(self):
         freq = [0]
-        for (x, y, myClass) in self.data:
+        for (x, y, myClass) in self.originalData:
             myClass = int(myClass)
-            # new class
-            if myClass> len(freq):
-                freq += [0]*(myClass - len(freq))
-            # add count
-            freq[myClass-1] += 1
+            # ignore more than 10 classes
+            if myClass <= self.maxClassNum:
+                # new class
+                if myClass> len(freq):
+                    freq += [0]*(myClass - len(freq))
+                # add count
+                freq[myClass-1] += 1
         self.freq = freq
         self.totalClass = len(freq)
 
@@ -118,14 +153,14 @@ class Data(object):
         # x, y axes
         self.canvas.create_line(x, y+h, x+w, y+h, arrow=LAST, fill=lineCol)
         self.canvas.create_line(x, y+h, x, y, arrow=LAST, fill=lineCol)
-        # frequences
+        # bar plot
         barWidth, maxFreq = w/(classNum+2), max(self.freq[0:classNum])
         margin = barWidth
         for i in xrange(classNum):
             (r,g,b), prop = colSchm[i], self.freq[i]/float(maxFreq)
             self.canvas.create_rectangle(x+margin+barWidth*i, 
-                            y+h-prop*(h-margin), x+margin+barWidth*(i+1), y+h,
-                            fill=rgbString(r,g,b))
+                            y+h-prop*(h-margin), x+margin+barWidth*(i+1), 
+                            y+h, fill=rgbString(r,g,b))
             self.canvas.create_text(x+margin+barWidth*i+barWidth/2, 
                             y+h+fontSize/2, anchor = N, text=str(i+1), 
                             fill=lineCol, font=("Arial",fontSize,"bold"))
@@ -165,15 +200,17 @@ class Data(object):
         # x, y axes
         self.canvas.create_line(x, y+h, x+w, y+h, arrow=LAST, fill=lineCol)
         self.canvas.create_line(x, y+h, x, y, arrow=LAST, fill=lineCol)
+        # x, y labels
         self.canvas.create_text(x+w/2, y+h+fontSize/2, anchor=N, text="X",
                             fill=lineCol, font=("Arial",fontSize,"bold"))
         self.canvas.create_text(x-fontSize/2, y+h/2, anchor=E, text="Y",
                             fill=lineCol, font=("Arial",fontSize,"bold"))
+        # scatter plot
         for (myX, myY, myClass) in self.data:
             myClass = int(myClass)
             if myClass <= classNum:
                 (r,g,b) = colSchm[myClass-1]
-                # calculate screen location
+                # screen location
                 xProp = (myX-self.xRange[0])/(self.xRange[1]-self.xRange[0])
                 yProp = (myY-self.yRange[0])/(self.yRange[1]-self.yRange[0])
                 screenX = x+margin+xProp*(w-margin*2)
@@ -197,11 +234,12 @@ class DefaultColorSchemes(object):
     def getColorSchemes(self, path):
         s = readFile(path)
         sLine = s.splitlines()
+        # initialize color scheme
         maxClassNum = self.maxClassNum
         colorSchemes = [0] * (maxClassNum+1)
         for i in xrange(maxClassNum+1):
             colorSchemes[i] = []
-        # save line by line; ignore first line, which is column names
+        # save line by line; ignore first line, which is column name
         for line in sLine[1:]: 
             sepLine = line.split(",")
             classNum = sepLine[1]
@@ -214,7 +252,7 @@ class DefaultColorSchemes(object):
                 colorSchemes[currentClass][-1] += [(r,g,b)]
         return colorSchemes
 
-    # draw one scheme at given location
+    # draw one scheme at a given location
     def drawSingleScheme(self, x, y, scheme, detail=False, truncate=False,
                         compress=False, highlight=None):
         tMargin, maxLen, topY, lwd = self.textMargin, self.maxLen, y, 3
@@ -248,11 +286,12 @@ class DefaultColorSchemes(object):
     def getLeftTop(self, x, y, classNum, i):
         left = x + (self.schmWidth+self.margin)*(i % self.maxPerLine)
         top = y
+        # chage to second line if needed
         if i >= self.maxPerLine:
             top += self.schmHeight*self.maxLen + self.margin
         return (left, top)        
 
-    # draw color schemes at given location on canvas
+    # draw color schemes at a given location on canvas
     def drawSchemes(self, x, y, classNum, curSchm):
         schemes = self.colorSchemes[classNum]
         lwd, hCol = self.lwd, self.hCol
@@ -268,7 +307,7 @@ class DefaultColorSchemes(object):
             (left, top) = self.getLeftTop(x, y, classNum, i)
             self.drawSingleScheme(left, top, scheme, truncate=True)
 
-    # get which color scheme did (newX, newY) fell into
+    # get which color scheme did (newX, newY) fall into
     def getCurrentScheme(self, x, y, newX, newY, classNum):
         schemes = self.colorSchemes[classNum]
         for i in xrange(len(schemes)):
@@ -279,7 +318,7 @@ class DefaultColorSchemes(object):
                 return i
         return None
 
-    # get which color within scheme did (newX, newY) fell into
+    # get which color within scheme did (newX, newY) fall into
     def getWorkingColor(self, (left, top), newX, newY, classNum):
         right = left+self.schmWidth
         for i in xrange(classNum):
@@ -289,7 +328,7 @@ class DefaultColorSchemes(object):
             top += self.schmHeight
         return None
 
-# class to generate and draw color wheel
+# a class to generate and draw color wheel
 class ColorWheel(object):
     # constructor
     def __init__(self, canvas, cx, cy, r, startColor=(255,0,0)):
@@ -299,18 +338,22 @@ class ColorWheel(object):
 
     # return left and right adjacency colors; from online:
     # stackoverflow.com/questions/14095849/...
-    # ...calculating-the-analogous-color-with-python
+    #   ...calculating-the-analogous-color-with-python
     def adjacent_colors(self, r, g, b, deg=30): 
         d = deg/360.
-        r, g, b = map(lambda x: x/255., [r, g, b]) # Convert to [0, 1]
-        h, l, s = colorsys.rgb_to_hls(r, g, b)     # RGB -> HLS
-        h = [(h+d) % 1 for d in (-d, d)]           # Rotation by d
+        # Convert to [0, 1]
+        r, g, b = map(lambda x: x/255., [r, g, b]) 
+        # RGB -> HLS
+        h, l, s = colorsys.rgb_to_hls(r, g, b)
+        # Rotation by d     
+        h = [(h+d) % 1 for d in (-d, d)]          
         l = 0.8*l
         adjacent = []
         for hi in h:
             r, g, b = colorsys.hls_to_rgb(hi, l, s)
             r, g, b = int(round(r*255)), int(round(g*255)), int(round(b*255)),
-            adjacent += [(r,g,b)] # H'LS -> new RGB
+            # H'LS -> new RGB
+            adjacent += [(r,g,b)] 
         return adjacent
 
     # draw color wheel
@@ -327,31 +370,33 @@ class ColorWheel(object):
                             fill = rgbString(*currentColor), 
                             outline = rgbString(*currentColor))
 
-# the main app
+# a class for the main app
 class ColorYourData(EventBasedAnimationClass):
     # constructor
-    def __init__(self, width=900, height=650, dataFile="defaultData.txt"):
+    def __init__(self, width=900, height=630, dataFile="defaultData.txt"):
         super(ColorYourData, self).__init__(width, height)
         self.dataFile = dataFile
 
-    # init
+    # initialize animation
     def initAnimation(self):
-        # layout set up
+        # basic set up
         self.titleSize, self.subtitleSize, self.textSize =30, 14, 12 
         self.subFont = ("Arial",self.subtitleSize,"bold")
         self.subCol  = rgbString(90,90,90) 
         self.backCol = "white"
         self.lZoneWidth = self.width*2/5
-        self.bMargin, self.cMargin, self.margin = 30, 5, 5
+        self.bMargin, self.cMargin, self.margin = 28, 8, 5
+        self.classNum, self.minClass, self.allowMaxClass = 3, 3, 10
+        self.timerDelay = None
         # initialization
         self.initZoneLoc()
+        self.initHelpScrn()
         self.initData()
         self.initDefaultSchemes()
         self.initYourSchemes()
         self.initFavorites()
         self.initWidgets()       
         self.initView()
-        self.timerDelay = None
 
     # initialize toplelf (x,y), width, height of all zones
     def initZoneLoc(self):
@@ -371,7 +416,7 @@ class ColorYourData(EventBasedAnimationClass):
         self.zoneLoc += [(x,y,w,h)]
         # zone 3: #of classes
         (x, y) = (self.cMargin, self.cMargin)
-        (w, h) = (self.lZoneWidth, self.subtitleSize*2)
+        (w, h) = (self.lZoneWidth, self.subtitleSize*2.2)
         self.zoneLoc += [(x,y,w,h)]
         # zone 4: default color scheme
         (x, y) = (self.cMargin, self.zoneLoc[3][1]+self.zoneLoc[3][3])
@@ -381,6 +426,30 @@ class ColorYourData(EventBasedAnimationClass):
         (x, y) = (self.cMargin, self.zoneLoc[4][1]+self.zoneLoc[4][3])
         (w, h) = (self.lZoneWidth, self.height-self.bMargin-y)
         self.zoneLoc += [(x,y,w,h)]
+
+    # initialize help screen
+    def initHelpScrn(self):
+        (x, y, w, h) = self.zoneLoc[1]
+        self.helpInfo = """\
+The app opens with a default data set with 10 classes.
+You can also import your own data, just make sure that
+it has no greater than 10 classes:)
+
+Check Auto-cluster to let the app decides your classes.
+If you like the result, feel free to export it!
+
+Use radio buttons to choose a view type from bar plot, pie
+chart and scatter plot. Choose how many classes you want
+to view from the combobox. Click on color schemes on the 
+left to view our carefully designed schemes.
+
+Feel free to design your own color scheme! Just click on the
+color wheel to decide a color, one class at a time. 
+
+Don't forget to save all schemes you like! You cannot add the
+one that is already saved, and we allow up to 17 favorites. 
+If you want more, simply export the current ones to file, and
+then clear them (by cautious)!"""
 
     # initialize favorite schemes
     def initFavorites(self):
@@ -403,8 +472,8 @@ class ColorYourData(EventBasedAnimationClass):
 
     # initialize default color schemes
     def initDefaultSchemes(self):
-        self.classNum, self.minClass = 3, 3
-        self.maxClass = min(10, self.data.totalClass)
+        # allow upto 10 classes
+        self.maxClass = min(self.allowMaxClass, self.data.totalClass)
         path = "ColorBrewerSchemes.csv"
         self.defSchm = DefaultColorSchemes(self.canvas, path)
         self.curDefSchm = 0
@@ -421,7 +490,8 @@ class ColorYourData(EventBasedAnimationClass):
     	for i in xrange(self.classNum):
     		self.yourSchm += [(fullRGB, fullRGB, fullRGB)]
     	# wheel location
-    	(x, y, w, h) = self.zoneLoc[5]
+        zone = 5
+    	(x, y, w, h) = self.zoneLoc[zone]
         self.cx, self.cy, self.r = x+w/3, y+h/2, w/4
         self.colorWheel = ColorWheel(canvas=self.canvas, cx=self.cx, 
         						cy=self.cy, r=self.r)
@@ -432,26 +502,27 @@ class ColorYourData(EventBasedAnimationClass):
 
     # intialize data
     def initData(self):
-        self.data = Data(self.canvas, self.dataFile)
+        self.data = Data(self.canvas, self.dataFile, self.classNum)
         self.isAutoClust = False
 
     # initialize the view system
     def initView(self):
-        self.viewType = "barPlot"
-        self.data = Data(self.canvas, self.dataFile)
+        self.viewType = "help"
+        self.data = Data(self.canvas, self.dataFile, self.classNum)
         
     # build radio buttons for zone 1
     def radiobutton(self):
         # a frame to put the buttons
         self.radioFrame = Frame(self.root, bg = self.backCol)
-        (x, y, w, h) = self.zoneLoc[1]
+        zone = 1
+        (x, y, w, h) = self.zoneLoc[zone]
         xMargin, yMargin = 50, self.subtitleSize
         self.radioFrame.place(x=x+xMargin, y=y+yMargin, anchor=W)
         # put buttons
         viewTypes = [("Bar plot", "barPlot"), ("Pie chart", "pieChart"),
-                    ("Scatter plot", "scatPlot")]
+                    ("Scatter plot", "scatPlot"), ("Help info", "help")]
         self.radioValue = StringVar()
-        self.radioValue.set("barPlot")       
+        self.radioValue.set("help")       
         for i in xrange(len(viewTypes)):
             (text, viewType) = viewTypes[i]
             self.radio = Radiobutton(self.radioFrame,  text=text,
@@ -474,14 +545,15 @@ class ColorYourData(EventBasedAnimationClass):
                         variable = self.checkValue, 
                         command = self.newCheckbutton, 
                         font=("Arial", self.textSize))
-        (x, y, w, h) = self.zoneLoc[1]
-        self.check.place(x=x+w-self.margin, 
-                        y=y+self.margin+self.subtitleSize*2, anchor=NE)
+        zone = 1
+        (x, y, w, h) = self.zoneLoc[zone]
+        self.check.place(x=x+w-self.margin*1.5, 
+                        y=y+self.margin+self.subtitleSize*7, anchor=NE)
 
     # react to check button
     def newCheckbutton(self):
         self.isAutoClust = bool(self.checkValue.get())
-        self.data.getData(self.isAutoClust, self.classNum)
+        self.data.getData(self.classNum, self.isAutoClust)
         self.redrawAll()
 
     # build a combo box for zone 3
@@ -491,7 +563,8 @@ class ColorYourData(EventBasedAnimationClass):
                         justify="center", state="readonly", width=3)
         self.box["values"] = tuple(range(self.minClass, self.maxClass+1))
         self.box.current(0) 
-        (x, y, w, h) = self.zoneLoc[3]
+        zone = 3
+        (x, y, w, h) = self.zoneLoc[zone]
         xMargin, yMargin = 200, self.subtitleSize
         self.box.place(x=x+xMargin, y=y+yMargin, anchor="center")
 
@@ -510,12 +583,14 @@ class ColorYourData(EventBasedAnimationClass):
     def saveButton(self):
         self.saveButton1 = Button(self.canvas, text="Save to favorites",
                         command=self.onSaveButton,font=("Arial",self.textSize))
-        (x, y, w, h) = self.zoneLoc[4]
-        self.saveButton1.place(x=x+w-self.margin, y=y+h, anchor=SE)
+        zone = 4
+        (x, y, w, h) = self.zoneLoc[zone]
+        self.saveButton1.place(x=x+w-self.margin, y=y+h-self.margin, anchor=SE)
         self.saveButton2 = Button(self.canvas, text="Save to favorites",
                         command=self.onSaveButton,font=("Arial",self.textSize))
-        (x, y, w, h) = self.zoneLoc[5]
-        self.saveButton2.place(x=x+w-self.margin, y=y+h, anchor=SE)
+        zone = 5
+        (x, y, w, h) = self.zoneLoc[zone]
+        self.saveButton2.place(x=x+w-self.margin, y=y+h-self.margin, anchor=SE)
 
     # react to button click, save color schemes
     def onSaveButton(self):
@@ -524,72 +599,116 @@ class ColorYourData(EventBasedAnimationClass):
             self.favSchm += [self.curSchm]
             self.redrawAll()
 
-    # build export buttons for saving favorites in zone 2
+    # build export buttons
     def exportButton(self):
+        # export favorites in zone 2
         self.exportFavButton = Button(self.canvas, text='Export favorites',
                         command=self.exportFav,font=("Arial",self.textSize))
-        (x, y, w, h) = self.zoneLoc[2]
+        zone = 2
+        (x, y, w, h) = self.zoneLoc[zone]
         self.exportFavButton.place(x=x+w-self.margin, y=y+self.margin/2, 
                         anchor=NE)
+        # export data in zone 1
+        self.exportDataButton = Button(self.canvas, text='Export data',
+                        command=self.exportData,font=("Arial",self.textSize))
+        zone = 1
+        (x, y, w, h) = self.zoneLoc[zone]
+        rMargin = 90
+        self.exportDataButton.place(x=x+w-self.margin, 
+                        y=y+self.subtitleSize*5+self.margin/2,  anchor=NE)
+
+    # export data in zone 1
+    def exportData(self):
+        # get filename
+        initialDir = os.getcwd()
+        filename = tkFileDialog.asksaveasfilename(parent=self.canvas, 
+                        defaultextension=".txt", initialdir= initialDir,
+                        initialfile="myExportData.txt")
+        # write to file
+        if len(filename)>0:
+            contents = "\t".join(["x","y","class"])
+            for (x, y, myClass) in self.data.data:
+                contents += "\n"
+                contents += "%f\t%f\t%d" % (x, y, int(myClass))
+            writeFile(filename, contents)
 
     # save current favorite schemes to given file
     def exportFav(self):
         # get filename
-        initialDir = "~/Documents/Courses/2014Fall/15-112/termProject"
+        initialDir = os.getcwd()
         filename = tkFileDialog.asksaveasfilename(parent=self.canvas, 
                         defaultextension=".txt", initialdir= initialDir,
                         initialfile="myFavoriteSchemes.txt")
         # write to file
-        contents = ""
-        for scheme in self.favSchm:
-            for (r,g,b) in scheme:
-                contents += rgbString(r,g,b)+"\t"
-            contents += "\n"
-        writeFile(filename, contents)
+        if len(filename)>0:
+            contents = ""
+            for scheme in self.favSchm:
+                for (r,g,b) in scheme:
+                    contents += rgbString(r,g,b)+"\t"
+                contents += "\n"
+            writeFile(filename, contents)
 
     # build button to clear all favorites
     def clearButton(self):
         self.clearButton = Button(self.canvas, text='Clear favorites',
                         command=self.clearFav,font=("Arial",self.textSize))
-        (x, y, w, h) = self.zoneLoc[2]
+        zone = 2
+        (x, y, w, h) = self.zoneLoc[zone]
         rMargin = 120
         self.clearButton.place(x=x+w-rMargin, y=y+self.margin/2, 
                         anchor=NE)
 
     # clear all current favorites
     def clearFav(self):
-        self.favSchm = []
-        self.redrawAll()
+        message = "Are you sure to delete all current favorite schemes?"
+        title = ""
+        response = tkMessageBox.askquestion(title, message)
+        if response=="yes":
+            self.favSchm = []
+            self.redrawAll()
 
     # build import buttons in zone 1
     def importButton(self):
         self.importButton = Button(self.canvas, text='Import data',
                         command=self.importData, font=("Arial",self.textSize))
-        (x, y, w, h) = self.zoneLoc[1]
-        self.importButton.place(x=x+w-self.margin,y=y+self.margin/2, anchor=NE)
+        zone = 1
+        (x, y, w, h) = self.zoneLoc[zone]
+        self.importButton.place(x=x+w-self.margin,
+                        y=y+self.subtitleSize*3+self.margin/2, anchor=NE)
 
     # import data from given file
     def importData(self):
         # get filename
-        initialDir = "~/Documents/Courses/2014Fall/15-112/termProject"
+        initialDir = os.getcwd()
         filename = tkFileDialog.askopenfilename(parent=self.canvas, 
                                         initialdir= initialDir)
-        self.dataFile = filename
-        self.initData()
-        self.initDefaultSchemes()
-        self.initYourSchemes()
-        self.initFavorites()      
-        self.initView()
-        self.combobox()
-        self.checkValue.set(0)
-        self.radioValue.set("barPlot") 
-        self.redrawAll()
+        if len(filename)>0:
+            self.dataFile = filename
+            self.classNum = 3
+            self.initData()
+            self.initDefaultSchemes()
+            self.initYourSchemes()
+            self.initFavorites()      
+            self.initView()
+            self.combobox()
+            self.checkValue.set(0)
+            self.radioValue.set("help") 
+            self.redrawAll()
 
     # react to mouse pressed
     def onMousePressed(self, event):
         self.clickZone = self.inWhichZone(event)
         self.onMousePressedZone(event)
         self.redrawAll()
+
+    # check which zone user clicked in
+    def inWhichZone(self, event):
+        totalZone = 5
+        for i in xrange(totalZone+1):
+            (x, y, w, h) = self.zoneLoc[i]
+            if (x<=event.x and event.x<=x+w and y<=event.y and event.y<=y+h):
+                return i
+        return None 
 
     # react to mouse pressed inside each zone
     def onMousePressedZone(self, event):
@@ -603,14 +722,6 @@ class ColorYourData(EventBasedAnimationClass):
         	self.curSchm = self.yourSchm
         	self.newYourCol(event.x, event.y)
 
-    # check which zone user clicked in
-    def inWhichZone(self, event):
-        for i in xrange(6):
-            (x, y, w, h) = self.zoneLoc[i]
-            if (x<=event.x and event.x<=x+w and y<=event.y and event.y<=y+h):
-                return i
-        return None      
-
     # check whether user selected a new default scheme
     def newDefSchm(self, newX, newY):
         (x, y) = self.defSchmLoc
@@ -621,7 +732,8 @@ class ColorYourData(EventBasedAnimationClass):
 
     # calculate the top left location to draw i-th favorate schemes
     def favSchmLoc(self, i):
-        (x, y, w, h) = self.zoneLoc[2]
+        zone = 2
+        (x, y, w, h) = self.zoneLoc[zone]
         margin = self.favMargin 
         schmWidth, schmHeight = self.defSchm.schmWidth, self.defSchm.schmHeight
         # color scheme
@@ -676,19 +788,24 @@ class ColorYourData(EventBasedAnimationClass):
                                 self.zoneLoc[2][1]+self.zoneLoc[2][3],)
         self.canvas.create_line(x, topY, x, bottomY, fill=lineCol)
         # horizonal lines
-        for zone in xrange(6):
+        totalZone = 5
+        for zone in xrange(totalZone+1):
             (x, y, w, h) = self.zoneLoc[zone]
             self.canvas.create_line(x, y, x+w, y, fill=lineCol)
         # title box
         (x, y, w, h) = self.zoneLoc[0]
-        self.canvas.create_rectangle(x, y, x+w, y+h,
-                    outline=lineCol, fill=rgbString(68,68,68))
+        titleCol = rgbString(68,68,68)
+        self.canvas.create_rectangle(x, y, x+w, y+h, outline=lineCol, 
+                                    fill=titleCol)
+        # highlight current working zone
+        (x, y, w, h) = self.zoneLoc[self.workZone]
+        self.canvas.create_rectangle(x, y, x+w, y+h, outline=lineCol, width=4)
 
     # draw title
     def drawTitle(self):
         # title
-        rX = self.zoneLoc[0][0] + self.zoneLoc[0][2]
-        cY = self.zoneLoc[0][1] + self.zoneLoc[0][3]/2
+        (x, y, w, h) = self.zoneLoc[0]
+        rX, cY = x+w, y+h/2
         self.canvas.create_text(rX-self.titleSize*6, cY, 
                             text="Color", fill="#ffffbf",
                             anchor=E, font=("Arial", self.titleSize,"bold"))
@@ -698,44 +815,56 @@ class ColorYourData(EventBasedAnimationClass):
         self.canvas.create_text(rX-self.titleSize, cY,
                             text="Data", fill="#91bfdb",
                             anchor=E, font=("Arial", self.titleSize,"bold"))
+        # subtitle
+        subTitleCol = rgbString(151,151,151)
         self.canvas.create_text(rX-self.titleSize, cY+self.titleSize, 
                             text="your color scheme generator", 
-                            fill=rgbString(151,151,151),
-                            anchor=SE,font=("Arial",self.subtitleSize,"bold"))
+                            fill=subTitleCol, anchor=SE,
+                            font=("Arial",self.subtitleSize,"bold"))
         # citation
-        self.canvas.create_text(rX, self.height, 
+        citCol, citSize = rgbString(90,90,90), 10
+        self.canvas.create_text(rX, self.height, anchor=SE, 
                             text="""Colors from www.ColorBrewer.org,
-by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
-                            anchor=SE, font=("Arial", 10))
+by Cynthia A. Brewer, Penn State.""", fill=citCol, font=("Arial", citSize))
 
     # draw subtitles for all sections
     def drawSectionTitles(self):
         subTitles = [None, "View:", "Favourites:", "Number of data classes:",
                     "Pick a color scheme:", "Design your color schemes:"]
-        for zone in xrange(1,6):
+        # all subtitles
+        totalZone = 5
+        for zone in xrange(1,totalZone+1):
             (x, y, w, h) = self.zoneLoc[zone]
             self.canvas.create_text(x+self.margin, y+self.subtitleSize, 
                                 text=subTitles[zone], anchor=W, 
                                 fill=self.subCol, font=self.subFont)
-        # highlight current working zone
-        (x, y, w, h) = self.zoneLoc[self.workZone]
-        self.canvas.create_text(x+self.margin, y+self.subtitleSize, 
-                                text=subTitles[self.workZone], anchor=W, 
-                                fill="red", font=self.subFont)
-
 
     # draw zone 1: view
     def drawZone1(self):
-        (x, y, w, h) = self.zoneLoc[1]
-        # plot 
-        self.data.plotData(self.viewType, x+self.margin*2+self.subtitleSize*2,
-                                y+self.margin+self.subtitleSize*3, 
-                                w*4/6, h*3/4, 
-                                self.classNum, self.curSchm)
-        # legend of current color scheme                
-        legendY = y + h - self.defSchm.schmHeight*self.maxClass
-        self.defSchm.drawSingleScheme(x+w*5/6, legendY-self.margin*2, 
-                                self.curSchm, detail=True)
+        zone = 1
+        (x, y, w, h) = self.zoneLoc[zone]
+        if self.viewType=="help":
+            self.drawHelpScrn()
+        else:
+            # plot data
+            self.data.plotData(self.viewType, 
+                                    x+self.margin*2+self.subtitleSize*2,
+                                    y+self.margin+self.subtitleSize*3, 
+                                    w*4/6, h*3/4, 
+                                    self.classNum, self.curSchm)
+            # legend of current color scheme                
+            legendY = y + h - self.defSchm.schmHeight*self.maxClass
+            self.defSchm.drawSingleScheme(x+w*5/6, legendY-self.margin*2, 
+                                    self.curSchm, detail=True)
+
+    # draw help screen in zone 1
+    def drawHelpScrn(self):
+        zone = 1
+        (x, y, w, h) = self.zoneLoc[zone]
+        helpSize = 13
+        self.canvas.create_text(x+self.margin*5, y+h/2,
+                            text=self.helpInfo, fill=self.subCol,
+                            font=("Arial", helpSize, "italic"), anchor=W)
 
     # draw zone 2: favorites
     def drawZone2(self):
@@ -744,7 +873,7 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
             # compressed color scheme
             self.defSchm.drawSingleScheme(leftX, topY, self.favSchm[i],
                                             compress=True)
-            # delete button
+            # delete button under color scheme
             self.canvas.create_rectangle(delLeftX, delTopY, 
                                 delLeftX+self.favDelWidth, 
                                 delTopY+self.favDelWidth,
@@ -764,7 +893,8 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
 
     # draw zone 5: design your color
     def drawZone5(self):
-        (x, y, w, h) = self.zoneLoc[5]
+        zone = 5
+        (x, y, w, h) = self.zoneLoc[zone]
         # color wheel
         cx, cy, r = self.cx, self.cy, self.r
         self.colorWheel.drawColorWheel()
@@ -784,7 +914,8 @@ by Cynthia A. Brewer, Penn State.""", fill=rgbString(90,90,90),
         self.drawZone4()
         self.drawZone5()
 
-ColorYourData(width=880, height=610).run()
+# run the app!
+ColorYourData().run()
 
 
 

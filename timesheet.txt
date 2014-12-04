@@ -21,7 +21,11 @@
 4 hrs let users select colors from color wheel
 
 2014/12/01
-2 hrs add save/open files
+4 hrs add save/open files
 
 2014/12/02
 4 hrs add k-means auto-clustering
+
+2014/12/03
+3 hrs try to add help screen; not very successful
+2 hrs adjust user interface

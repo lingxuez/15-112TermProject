@@ -1,4 +1,5 @@
 # eventBasedAnimationClass2.py
+# from 15-112 lecture notes
 
 from Tkinter import *
 
@@ -12,7 +13,8 @@ class EventBasedAnimationClass(object):
     def __init__(self, width=300, height=300):
         self.width = width
         self.height = height
-        self.timerDelay = 250 # in milliseconds (set to None to turn off timer)
+        # in milliseconds (set to None to turn off timer)
+        self.timerDelay = 250 
 
     def onMousePressedWrapper(self, event):
         self.onMousePressed(event)
@@ -36,15 +38,9 @@ class EventBasedAnimationClass(object):
         self.canvas.pack()
         self.initAnimation()
         # set up events
-        # DK: You can use a local function with a closure
-        # to store the canvas binding, like this:
         def f(event): self.onMousePressedWrapper(event)    
         self.root.bind("<Button-1>", f)
-        # DK: Or you can just use an anonymous lamdba function, like this:
         self.root.bind("<Key>", lambda event: self.onKeyPressedWrapper(event))
         self.onTimerFiredWrapper()
-        # and launch the app (This call BLOCKS, so your program waits
-        # until you close the window!)
+        # and launch the app
         self.root.mainloop()
-
-# EventBasedAnimationClass(300,300).run()
